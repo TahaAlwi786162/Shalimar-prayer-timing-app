@@ -45,3 +45,6 @@ Prayer times are transcribed from the Shalimar Islamic Centre annual
 timing sheet. They're for personal planning — always defer to the mosque's
 posted board/Adhan for the actual Iqama, especially around Ramadan when
 timings can shift.
+
+Link: https://tahaalwi786162.github.io/Shalimar-prayer-timing-app/
+
