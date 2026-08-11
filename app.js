@@ -1,14 +1,19 @@
 const STORAGE_KEY = 'shalimar-school-planner:schedule';
 const HOMEWORK_KEY = 'shalimar-school-planner:homework';
+const FOLDER_KEY = 'shalimar-school-planner:folders';
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const WEEKDAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const PRAYER_LABELS = { fajr: 'Fajr', zhuhr: 'Zhuhr', asr: 'Asr', maghrib: 'Maghrib', isha: 'Isha' };
+const FOLDER_COLORS = ['#e15b5b', '#e0854a', '#d9a63e', '#8fae3d', '#3f9e5c', '#2fa39a', '#3f8fd9', '#5b6fe0', '#8a5be0', '#c05bd0', '#e05b9e', '#7a7a7a'];
+const DEFAULT_HW_COLOR = '#8a5be0';
 
 let state = {
   viewDate: new Date(),
   weekAnchor: startOfWeek(new Date()),
   schedule: loadJSON(STORAGE_KEY, []),
   homework: loadJSON(HOMEWORK_KEY, []),
+  folders: loadJSON(FOLDER_KEY, []),
+  selectedFolderColor: FOLDER_COLORS[0],
 };
 
 function loadJSON(key, fallback) {
@@ -22,6 +27,7 @@ function loadJSON(key, fallback) {
 
 function saveSchedule() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state.schedule)); }
 function saveHomework() { localStorage.setItem(HOMEWORK_KEY, JSON.stringify(state.homework)); }
+function saveFolders() { localStorage.setItem(FOLDER_KEY, JSON.stringify(state.folders)); }
 
 function startOfWeek(date) {
   const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -29,13 +35,19 @@ function startOfWeek(date) {
   return d;
 }
 
+function getFolder(folderId) {
+  return state.folders.find(f => f.id === folderId) || null;
+}
+
 // ---------- Tabs ----------
+const mainEl = document.querySelector('main');
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById(btn.dataset.tab).classList.add('active');
+    mainEl.classList.toggle('wide', btn.dataset.tab === 'week-tab');
   });
 });
 
@@ -64,6 +76,65 @@ function shiftWeek(delta) {
   renderWeek();
 }
 
+// ---------- Folders (subjects) ----------
+const swatchContainer = document.getElementById('folder-color-swatches');
+FOLDER_COLORS.forEach((color, i) => {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'color-swatch' + (i === 0 ? ' selected' : '');
+  btn.style.background = color;
+  btn.setAttribute('aria-label', `Choose color ${color}`);
+  btn.addEventListener('click', () => {
+    state.selectedFolderColor = color;
+    swatchContainer.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected'));
+    btn.classList.add('selected');
+  });
+  swatchContainer.appendChild(btn);
+});
+
+const folderForm = document.getElementById('folder-form');
+folderForm.addEventListener('submit', e => {
+  e.preventDefault();
+  const nameInput = document.getElementById('folder-name');
+  const name = nameInput.value.trim();
+  if (!name) return;
+  state.folders.push({ id: crypto.randomUUID(), name, color: state.selectedFolderColor });
+  saveFolders();
+  nameInput.value = '';
+  render();
+});
+
+function deleteFolder(id) {
+  state.folders = state.folders.filter(f => f.id !== id);
+  state.schedule.forEach(c => { if (c.folderId === id) c.folderId = ''; });
+  state.homework.forEach(h => { if (h.folderId === id) h.folderId = ''; });
+  saveFolders();
+  saveSchedule();
+  saveHomework();
+  render();
+}
+
+function renderFolderList() {
+  const list = document.getElementById('folder-list');
+  list.innerHTML = '';
+  state.folders.forEach(f => {
+    const pill = document.createElement('span');
+    pill.className = 'folder-pill';
+    pill.style.background = f.color + '26';
+    pill.style.color = f.color;
+    pill.innerHTML = `<span class="folder-dot" style="background:${f.color}"></span>${f.name}<button class="folder-delete" aria-label="Delete ${f.name}">&times;</button>`;
+    pill.querySelector('.folder-delete').addEventListener('click', () => deleteFolder(f.id));
+    list.appendChild(pill);
+  });
+
+  [document.getElementById('class-folder'), document.getElementById('hw-folder')].forEach(select => {
+    const current = select.value;
+    select.innerHTML = '<option value="">No subject</option>' +
+      state.folders.map(f => `<option value="${f.id}">${f.name}</option>`).join('');
+    select.value = state.folders.some(f => f.id === current) ? current : '';
+  });
+}
+
 // ---------- Add class form ----------
 const form = document.getElementById('class-form');
 form.addEventListener('submit', e => {
@@ -71,15 +142,15 @@ form.addEventListener('submit', e => {
   const name = document.getElementById('class-name').value.trim();
   const start = document.getElementById('class-start').value;
   const end = document.getElementById('class-end').value;
+  const folderId = document.getElementById('class-folder').value;
   const days = Array.from(document.querySelectorAll('.day-check:checked')).map(c => Number(c.value));
   if (!name || !start || !end || days.length === 0) return;
   if (start >= end) { alert('End time must be after start time.'); return; }
-  state.schedule.push({ id: crypto.randomUUID(), name, start, end, days });
+  state.schedule.push({ id: crypto.randomUUID(), name, start, end, days, folderId });
   saveSchedule();
   form.reset();
   render();
-}
-);
+});
 
 function deleteClass(id) {
   state.schedule = state.schedule.filter(c => c.id !== id);
@@ -92,11 +163,11 @@ const hwForm = document.getElementById('homework-form');
 hwForm.addEventListener('submit', e => {
   e.preventDefault();
   const title = document.getElementById('hw-title').value.trim();
-  const subject = document.getElementById('hw-subject').value.trim();
+  const folderId = document.getElementById('hw-folder').value;
   const due = document.getElementById('hw-due').value;
   const notes = document.getElementById('hw-notes').value.trim();
   if (!title || !due) return;
-  state.homework.push({ id: crypto.randomUUID(), title, subject, due, notes, done: false });
+  state.homework.push({ id: crypto.randomUUID(), title, folderId, due, notes, done: false });
   saveHomework();
   hwForm.reset();
   render();
@@ -140,17 +211,21 @@ function isSameDay(a, b) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-/** Chronologically sorted prayer+class events for a given date. */
+/** Chronologically sorted prayer+class+homework events for a given date (homework sorts first). */
 function getDayEvents(date) {
   const prayers = getPrayerTimesForDate(date);
   const classes = getClassesForDate(date);
+  const homeworkToday = state.homework.filter(hw => !hw.done && hw.due === dateKey(date));
 
   const events = [];
   Object.entries(prayers).forEach(([key, clock]) => {
     events.push({ type: 'prayer', key, label: PRAYER_LABELS[key], minutes: parseClockToMinutes(clock), clock });
   });
   classes.forEach(c => {
-    events.push({ type: 'class', label: c.name, minutes: c.startMin, endMin: c.endMin, clockStart: formatClock12(c.startMin), clockEnd: formatClock12(c.endMin) });
+    events.push({ type: 'class', label: c.name, minutes: c.startMin, endMin: c.endMin, clockStart: formatClock12(c.startMin), clockEnd: formatClock12(c.endMin), folderId: c.folderId });
+  });
+  homeworkToday.forEach(hw => {
+    events.push({ type: 'homework', label: hw.title, minutes: -1, hw });
   });
   events.sort((a, b) => a.minutes - b.minutes);
   return events;
@@ -167,6 +242,7 @@ function getClassesForDate(date) {
 // ---------- Render: Today tab ----------
 function render() {
   dateLabel.textContent = formatDateHeading(state.viewDate);
+  renderFolderList();
   renderTimeline();
   renderScheduleList();
   renderDstBanner();
@@ -202,6 +278,13 @@ function renderJumuah() {
   `;
 }
 
+function homeworkDueText(hw) {
+  const days = daysUntil(hw.due);
+  if (days < 0) return 'Overdue';
+  if (days === 0) return 'Due today';
+  return `Due in ${days}d`;
+}
+
 function renderTimeline() {
   const container = document.getElementById('timeline');
   container.innerHTML = '';
@@ -228,13 +311,29 @@ function renderTimeline() {
             ? `<span class="conflict">falls during <strong>${conflict.name}</strong> — plan ahead to step out or pray right after</span>`
             : `<span class="clear">clear — no class scheduled</span>`}
         </div>`;
-    } else {
+    } else if (ev.type === 'class') {
+      const folder = getFolder(ev.folderId);
+      if (folder) row.style.borderLeftColor = folder.color;
       row.innerHTML = `
         <div class="time">${ev.clockStart}&ndash;${ev.clockEnd}</div>
         <div class="content">
-          <span class="badge class-badge">Class</span>
+          <span class="badge class-badge"${folder ? ` style="background:${folder.color}26;color:${folder.color}"` : ''}>${folder ? folder.name : 'Class'}</span>
           <span>${ev.label}</span>
         </div>`;
+    } else {
+      const folder = getFolder(ev.hw.folderId);
+      const color = folder ? folder.color : DEFAULT_HW_COLOR;
+      row.style.borderLeftColor = color;
+      row.innerHTML = `
+        <div class="time">&mdash;</div>
+        <div class="content">
+          <label class="hw-timeline-check">
+            <input type="checkbox">
+            <span class="badge" style="background:${color}26;color:${color}">${folder ? folder.name : 'Homework'}</span>
+            <span>${ev.label} &mdash; ${homeworkDueText(ev.hw)}</span>
+          </label>
+        </div>`;
+      row.querySelector('input[type="checkbox"]').addEventListener('change', () => toggleHomeworkDone(ev.hw.id));
     }
     container.appendChild(row);
   });
@@ -250,11 +349,13 @@ function renderScheduleList() {
   const sorted = [...state.schedule].sort((a, b) => timeStrToMinutes(a.start) - timeStrToMinutes(b.start));
   sorted.forEach(c => {
     const dayStr = c.days.slice().sort((a, b) => a - b).map(d => WEEKDAYS[d]).join(', ');
+    const folder = getFolder(c.folderId);
     const row = document.createElement('div');
     row.className = 'schedule-row';
+    if (folder) row.style.borderLeft = `4px solid ${folder.color}`;
     row.innerHTML = `
       <div>
-        <strong>${c.name}</strong>
+        <strong>${c.name}</strong>${folder ? ` <span class="folder-tag" style="background:${folder.color}26;color:${folder.color}">${folder.name}</span>` : ''}
         <div class="muted">${dayStr} &middot; ${formatClock12(timeStrToMinutes(c.start))}&ndash;${formatClock12(timeStrToMinutes(c.end))}</div>
       </div>
       <button class="delete-btn" aria-label="Delete ${c.name}">&times;</button>
@@ -275,7 +376,7 @@ function updateCountdown() {
   const now = new Date();
   const nowMin = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
 
-  let events = getDayEvents(now).filter(ev => ev.minutes > nowMin);
+  let events = getDayEvents(now).filter(ev => ev.type !== 'homework' && ev.minutes > nowMin);
   let label, targetMinutes;
   if (events.length > 0) {
     const next = events[0];
@@ -319,6 +420,7 @@ function renderHomeworkList() {
   });
   sorted.forEach(hw => {
     const days = daysUntil(hw.due);
+    const folder = getFolder(hw.folderId);
     let urgency = 'muted';
     let dueText = `Due ${hw.due}`;
     if (!hw.done) {
@@ -328,11 +430,12 @@ function renderHomeworkList() {
     }
     const row = document.createElement('div');
     row.className = `schedule-row homework-row ${hw.done ? 'done' : urgency}`;
+    if (folder && !hw.done) row.style.borderLeftColor = folder.color;
     row.innerHTML = `
       <label class="hw-check">
         <input type="checkbox" ${hw.done ? 'checked' : ''}>
         <div>
-          <strong>${hw.title}</strong>${hw.subject ? ` <span class="muted">(${hw.subject})</span>` : ''}
+          <strong>${hw.title}</strong>${folder ? ` <span class="folder-tag" style="background:${folder.color}26;color:${folder.color}">${folder.name}</span>` : ''}
           <div class="muted">${dueText}${hw.notes ? ' &middot; ' + hw.notes : ''}</div>
         </div>
       </label>
@@ -350,11 +453,11 @@ function renderTodayHomework() {
     .filter(hw => !hw.done && daysUntil(hw.due) <= 3)
     .sort((a, b) => a.due.localeCompare(b.due));
   if (dueSoon.length === 0) { el.style.display = 'none'; el.innerHTML = ''; return; }
-  el.style.display = 'block';
+  el.style.display = 'flex';
   el.innerHTML = dueSoon.map(hw => {
-    const days = daysUntil(hw.due);
-    const text = days < 0 ? 'Overdue' : days === 0 ? 'Due today' : `Due in ${days}d`;
-    return `<span class="hw-chip">${text}: ${hw.title}</span>`;
+    const folder = getFolder(hw.folderId);
+    const color = folder ? folder.color : DEFAULT_HW_COLOR;
+    return `<span class="hw-chip" style="background:${color}26;color:${color}">${homeworkDueText(hw)}: ${hw.title}</span>`;
   }).join('');
 }
 
@@ -375,7 +478,6 @@ function renderWeek() {
     d.setDate(d.getDate() + i);
     const events = getDayEvents(d);
     const classes = getClassesForDate(d);
-    const hwCount = state.homework.filter(hw => !hw.done && hw.due === dateKey(d)).length;
 
     const col = document.createElement('div');
     col.className = 'week-day' + (isSameDay(d, today) ? ' is-today' : '');
@@ -383,7 +485,6 @@ function renderWeek() {
       <div class="week-day-header">
         <span>${WEEKDAYS_LONG[d.getDay()]}</span>
         <span class="muted">${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
-        ${hwCount > 0 ? `<span class="hw-dot" title="${hwCount} assignment(s) due">${hwCount}</span>` : ''}
       </div>
       <div class="week-day-events"></div>
     `;
@@ -394,8 +495,14 @@ function renderWeek() {
       if (ev.type === 'prayer') {
         const conflict = classes.find(c => ev.minutes >= c.startMin && ev.minutes < c.endMin);
         row.innerHTML = `<span class="time">${ev.clock}</span><span>${ev.label}${conflict ? ' ⚠' : ''}</span>`;
-      } else {
+      } else if (ev.type === 'class') {
+        const folder = getFolder(ev.folderId);
+        if (folder) row.style.borderLeftColor = folder.color;
         row.innerHTML = `<span class="time">${ev.clockStart}</span><span>${ev.label}</span>`;
+      } else {
+        const folder = getFolder(ev.hw.folderId);
+        row.style.borderLeftColor = folder ? folder.color : DEFAULT_HW_COLOR;
+        row.innerHTML = `<span class="time">HW</span><span>${ev.label}</span>`;
       }
       eventsEl.appendChild(row);
     });
@@ -424,12 +531,15 @@ function renderMonthTable() {
   tbody.innerHTML = '';
   const total = daysInMonth(year, monthIndex);
   const today = new Date();
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  let todayRow = null;
   for (let d = 1; d <= total; d++) {
     const date = new Date(year, monthIndex, d);
     const times = getPrayerTimesForDate(date);
-    const isToday = date.toDateString() === today.toDateString();
+    const isToday = date.getTime() === startOfToday.getTime();
     const tr = document.createElement('tr');
-    if (isToday) tr.classList.add('today-row');
+    if (isToday) { tr.classList.add('today-row'); todayRow = tr; }
+    else if (date < startOfToday) tr.classList.add('past-row');
     tr.innerHTML = `
       <td>${d} <span class="muted">${WEEKDAYS[date.getDay()]}</span></td>
       <td>${times.fajr}</td>
@@ -440,6 +550,7 @@ function renderMonthTable() {
     `;
     tbody.appendChild(tr);
   }
+  if (todayRow) todayRow.scrollIntoView({ block: 'center' });
 }
 
 // ---------- Theme toggle ----------

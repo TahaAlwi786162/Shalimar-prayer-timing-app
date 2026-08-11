@@ -63,6 +63,15 @@
   </section>
 
   <section id="schedule-tab" class="tab-panel">
+    <h2>Subjects</h2>
+    <p class="muted small">Create a subject folder (e.g. "Math") with a color, then tag classes and homework with it — everything in that subject shares the color everywhere in the app.</p>
+    <form id="folder-form" class="class-form">
+      <input type="text" id="folder-name" placeholder="Subject name (e.g. Math)" required>
+      <div id="folder-color-swatches" class="color-swatches"></div>
+      <button type="submit">Add subject</button>
+    </form>
+    <div id="folder-list" class="folder-list"></div>
+
     <h2>Add a class</h2>
     <form id="class-form" class="class-form">
       <input type="text" id="class-name" placeholder="Class name (e.g. Period 3 — Math)" required>
@@ -70,6 +79,7 @@
         <label>Start <input type="time" id="class-start" required></label>
         <label>End <input type="time" id="class-end" required></label>
       </div>
+      <select id="class-folder"><option value="">No subject</option></select>
       <div class="day-checks">
         <label><input type="checkbox" class="day-check" value="1"> Mon</label>
         <label><input type="checkbox" class="day-check" value="2"> Tue</label>
@@ -87,8 +97,8 @@
   <section id="homework-tab" class="tab-panel">
     <h2>Add an assignment</h2>
     <form id="homework-form" class="class-form">
-      <input type="text" id="hw-title" placeholder="Assignment (e.g. Ch. 5 problem set)" required>
-      <input type="text" id="hw-subject" placeholder="Subject (optional)">
+      <input type="text" id="hw-title" placeholder="Assignment or test (e.g. Ch. 5 test)" required>
+      <select id="hw-folder"><option value="">No subject</option></select>
       <div class="time-row">
         <label>Due date <input type="date" id="hw-due" required></label>
       </div>
