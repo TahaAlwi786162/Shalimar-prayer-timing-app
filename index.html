@@ -4,6 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Shalimar Prayer &amp; School Planner</title>
+<meta name="theme-color" content="#2f6b4f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Prayer Planner">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -12,14 +18,20 @@
     <h1>🕌 Prayer &amp; School Planner</h1>
     <p class="muted">Shalimar Islamic Centre — Mississauga, ON</p>
   </div>
-  <button id="theme-toggle" aria-label="Toggle theme">🌓</button>
+  <div class="header-actions">
+    <button id="install-btn" style="display:none;">Install App</button>
+    <button id="theme-toggle" aria-label="Toggle theme">🌓</button>
+  </div>
 </header>
 
 <div id="dst-banner" class="banner" style="display:none;"></div>
+<div id="countdown-banner" class="banner countdown-banner" style="display:none;"></div>
 
 <nav class="tabs">
   <button class="tab-btn active" data-tab="today-tab">Today</button>
+  <button class="tab-btn" data-tab="week-tab">Week</button>
   <button class="tab-btn" data-tab="schedule-tab">School Schedule</button>
+  <button class="tab-btn" data-tab="homework-tab">Homework</button>
   <button class="tab-btn" data-tab="times-tab">Prayer Times</button>
   <button class="tab-btn" data-tab="info-tab">Jumu'ah &amp; Info</button>
 </nav>
@@ -34,7 +46,20 @@
       <button id="next-day" aria-label="Next day">&rarr;</button>
       <button id="today-btn">Today</button>
     </div>
+    <div id="today-homework" class="hw-chips" style="display:none;"></div>
     <div id="timeline" class="timeline"></div>
+  </section>
+
+  <section id="week-tab" class="tab-panel">
+    <div class="date-nav">
+      <button id="prev-week" aria-label="Previous week">&larr;</button>
+      <div class="date-heading">
+        <span id="week-label"></span>
+      </div>
+      <button id="next-week" aria-label="Next week">&rarr;</button>
+      <button id="this-week-btn">This Week</button>
+    </div>
+    <div id="week-grid" class="week-grid"></div>
   </section>
 
   <section id="schedule-tab" class="tab-panel">
@@ -59,6 +84,22 @@
     <div id="schedule-list" class="schedule-list"></div>
   </section>
 
+  <section id="homework-tab" class="tab-panel">
+    <h2>Add an assignment</h2>
+    <form id="homework-form" class="class-form">
+      <input type="text" id="hw-title" placeholder="Assignment (e.g. Ch. 5 problem set)" required>
+      <input type="text" id="hw-subject" placeholder="Subject (optional)">
+      <div class="time-row">
+        <label>Due date <input type="date" id="hw-due" required></label>
+      </div>
+      <input type="text" id="hw-notes" placeholder="Notes (optional)">
+      <button type="submit">Add assignment</button>
+    </form>
+
+    <h2>Your assignments</h2>
+    <div id="homework-list" class="schedule-list"></div>
+  </section>
+
   <section id="times-tab" class="tab-panel">
     <h2>Monthly Iqama Timings</h2>
     <div class="month-controls">
@@ -68,12 +109,12 @@
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>Date</th><th>Fajr</th><th>Zhuhr</th><th>Asr</th><th>Isha</th></tr>
+          <tr><th>Date</th><th>Fajr</th><th>Zhuhr</th><th>Asr</th><th>Maghrib</th><th>Isha</th></tr>
         </thead>
         <tbody id="month-table-body"></tbody>
       </table>
     </div>
-    <p class="muted small">Times for the 1st, 10th/DST-Sunday and 20th are taken directly from the mosque's published sheet; other dates are linearly interpolated between those anchors, so treat them as close estimates rather than the official Iqama.</p>
+    <p class="muted small">Fajr/Zhuhr/Asr/Isha for the 1st, 10th/DST-Sunday and 20th are taken directly from the mosque's published sheet; other dates are linearly interpolated between those anchors. Maghrib is calculated from sunset and isn't on the printed sheet — treat both as close estimates rather than the official Iqama.</p>
   </section>
 
   <section id="info-tab" class="tab-panel">

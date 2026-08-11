@@ -1,23 +1,32 @@
 const STORAGE_KEY = 'shalimar-school-planner:schedule';
+const HOMEWORK_KEY = 'shalimar-school-planner:homework';
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const PRAYER_LABELS = { fajr: 'Fajr', zhuhr: 'Zhuhr', asr: 'Asr', isha: 'Isha' };
+const WEEKDAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const PRAYER_LABELS = { fajr: 'Fajr', zhuhr: 'Zhuhr', asr: 'Asr', maghrib: 'Maghrib', isha: 'Isha' };
 
 let state = {
   viewDate: new Date(),
-  schedule: loadSchedule(),
+  weekAnchor: startOfWeek(new Date()),
+  schedule: loadJSON(STORAGE_KEY, []),
+  homework: loadJSON(HOMEWORK_KEY, []),
 };
 
-function loadSchedule() {
+function loadJSON(key, fallback) {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
   } catch (e) {
-    return [];
+    return fallback;
   }
 }
 
-function saveSchedule() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state.schedule));
+function saveSchedule() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state.schedule)); }
+function saveHomework() { localStorage.setItem(HOMEWORK_KEY, JSON.stringify(state.homework)); }
+
+function startOfWeek(date) {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  d.setDate(d.getDate() - d.getDay());
+  return d;
 }
 
 // ---------- Tabs ----------
@@ -30,7 +39,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   });
 });
 
-// ---------- Date navigation ----------
+// ---------- Date navigation (Today tab) ----------
 const dateLabel = document.getElementById('date-label');
 document.getElementById('prev-day').addEventListener('click', () => shiftDay(-1));
 document.getElementById('next-day').addEventListener('click', () => shiftDay(1));
@@ -41,6 +50,18 @@ function shiftDay(delta) {
   d.setDate(d.getDate() + delta);
   state.viewDate = d;
   render();
+}
+
+// ---------- Week navigation ----------
+document.getElementById('prev-week').addEventListener('click', () => shiftWeek(-1));
+document.getElementById('next-week').addEventListener('click', () => shiftWeek(1));
+document.getElementById('this-week-btn').addEventListener('click', () => { state.weekAnchor = startOfWeek(new Date()); renderWeek(); });
+
+function shiftWeek(delta) {
+  const d = new Date(state.weekAnchor);
+  d.setDate(d.getDate() + delta * 7);
+  state.weekAnchor = d;
+  renderWeek();
 }
 
 // ---------- Add class form ----------
@@ -57,11 +78,38 @@ form.addEventListener('submit', e => {
   saveSchedule();
   form.reset();
   render();
-});
+}
+);
 
 function deleteClass(id) {
   state.schedule = state.schedule.filter(c => c.id !== id);
   saveSchedule();
+  render();
+}
+
+// ---------- Add homework form ----------
+const hwForm = document.getElementById('homework-form');
+hwForm.addEventListener('submit', e => {
+  e.preventDefault();
+  const title = document.getElementById('hw-title').value.trim();
+  const subject = document.getElementById('hw-subject').value.trim();
+  const due = document.getElementById('hw-due').value;
+  const notes = document.getElementById('hw-notes').value.trim();
+  if (!title || !due) return;
+  state.homework.push({ id: crypto.randomUUID(), title, subject, due, notes, done: false });
+  saveHomework();
+  hwForm.reset();
+  render();
+});
+
+function toggleHomeworkDone(id) {
+  const item = state.homework.find(h => h.id === id);
+  if (item) { item.done = !item.done; saveHomework(); render(); }
+}
+
+function deleteHomework(id) {
+  state.homework = state.homework.filter(h => h.id !== id);
+  saveHomework();
   render();
 }
 
@@ -84,6 +132,38 @@ function formatDateHeading(date) {
   return date.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 }
 
+function dateKey(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function isSameDay(a, b) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+/** Chronologically sorted prayer+class events for a given date. */
+function getDayEvents(date) {
+  const prayers = getPrayerTimesForDate(date);
+  const classes = getClassesForDate(date);
+
+  const events = [];
+  Object.entries(prayers).forEach(([key, clock]) => {
+    events.push({ type: 'prayer', key, label: PRAYER_LABELS[key], minutes: parseClockToMinutes(clock), clock });
+  });
+  classes.forEach(c => {
+    events.push({ type: 'class', label: c.name, minutes: c.startMin, endMin: c.endMin, clockStart: formatClock12(c.startMin), clockEnd: formatClock12(c.endMin) });
+  });
+  events.sort((a, b) => a.minutes - b.minutes);
+  return events;
+}
+
+function getClassesForDate(date) {
+  const weekday = date.getDay();
+  return state.schedule
+    .filter(c => c.days.includes(weekday))
+    .map(c => ({ ...c, startMin: timeStrToMinutes(c.start), endMin: timeStrToMinutes(c.end) }))
+    .sort((a, b) => a.startMin - b.startMin);
+}
+
 // ---------- Render: Today tab ----------
 function render() {
   dateLabel.textContent = formatDateHeading(state.viewDate);
@@ -92,6 +172,10 @@ function render() {
   renderDstBanner();
   renderJumuah();
   renderMonthTable();
+  renderHomeworkList();
+  renderTodayHomework();
+  renderWeek();
+  updateCountdown();
 }
 
 function renderDstBanner() {
@@ -118,29 +202,12 @@ function renderJumuah() {
   `;
 }
 
-function getTodaysClasses(date) {
-  const weekday = date.getDay();
-  return state.schedule
-    .filter(c => c.days.includes(weekday))
-    .map(c => ({ ...c, startMin: timeStrToMinutes(c.start), endMin: timeStrToMinutes(c.end) }))
-    .sort((a, b) => a.startMin - b.startMin);
-}
-
 function renderTimeline() {
   const container = document.getElementById('timeline');
   container.innerHTML = '';
 
-  const prayers = getPrayerTimesForDate(state.viewDate);
-  const classes = getTodaysClasses(state.viewDate);
-
-  const events = [];
-  Object.entries(prayers).forEach(([key, clock]) => {
-    events.push({ type: 'prayer', key, label: PRAYER_LABELS[key], minutes: parseClockToMinutes(clock), clock });
-  });
-  classes.forEach(c => {
-    events.push({ type: 'class', label: c.name, minutes: c.startMin, endMin: c.endMin, clockStart: formatClock12(c.startMin), clockEnd: formatClock12(c.endMin) });
-  });
-  events.sort((a, b) => a.minutes - b.minutes);
+  const events = getDayEvents(state.viewDate);
+  const classes = getClassesForDate(state.viewDate);
 
   if (events.length === 0) {
     container.innerHTML = '<p class="muted">No classes added yet — add your school schedule in the "School Schedule" tab to see it merged with prayer times here.</p>';
@@ -197,6 +264,145 @@ function renderScheduleList() {
   });
 }
 
+// ---------- Next-up countdown ----------
+let countdownTimer = null;
+
+function updateCountdown() {
+  const el = document.getElementById('countdown-banner');
+  const isToday = isSameDay(state.viewDate, new Date());
+  if (!isToday) { el.style.display = 'none'; return; }
+
+  const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+
+  let events = getDayEvents(now).filter(ev => ev.minutes > nowMin);
+  let label, targetMinutes;
+  if (events.length > 0) {
+    const next = events[0];
+    label = next.label;
+    targetMinutes = next.minutes;
+  } else {
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowPrayers = getPrayerTimesForDate(tomorrow);
+    label = 'Fajr';
+    targetMinutes = parseClockToMinutes(tomorrowPrayers.fajr) + 1440;
+  }
+
+  const diffSec = Math.max(0, Math.round((targetMinutes - nowMin) * 60));
+  const h = Math.floor(diffSec / 3600);
+  const m = Math.floor((diffSec % 3600) / 60);
+  const s = diffSec % 60;
+  el.style.display = 'block';
+  el.innerHTML = `Next: <strong>${label}</strong> in ${h > 0 ? h + 'h ' : ''}${m}m ${String(s).padStart(2, '0')}s`;
+}
+
+// ---------- Homework ----------
+function daysUntil(dueStr) {
+  const [y, m, d] = dueStr.split('-').map(Number);
+  const due = new Date(y, m - 1, d);
+  const today = new Date();
+  const startToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  return Math.round((due - startToday) / 86400000);
+}
+
+function renderHomeworkList() {
+  const list = document.getElementById('homework-list');
+  list.innerHTML = '';
+  if (state.homework.length === 0) {
+    list.innerHTML = '<p class="muted">No homework tracked yet. Add an assignment above.</p>';
+    return;
+  }
+  const sorted = [...state.homework].sort((a, b) => {
+    if (a.done !== b.done) return a.done ? 1 : -1;
+    return a.due.localeCompare(b.due);
+  });
+  sorted.forEach(hw => {
+    const days = daysUntil(hw.due);
+    let urgency = 'muted';
+    let dueText = `Due ${hw.due}`;
+    if (!hw.done) {
+      if (days < 0) { urgency = 'overdue'; dueText = `Overdue — was due ${hw.due}`; }
+      else if (days === 0) { urgency = 'due-today'; dueText = 'Due today'; }
+      else if (days <= 3) { urgency = 'due-soon'; dueText = `Due in ${days} day${days === 1 ? '' : 's'} (${hw.due})`; }
+    }
+    const row = document.createElement('div');
+    row.className = `schedule-row homework-row ${hw.done ? 'done' : urgency}`;
+    row.innerHTML = `
+      <label class="hw-check">
+        <input type="checkbox" ${hw.done ? 'checked' : ''}>
+        <div>
+          <strong>${hw.title}</strong>${hw.subject ? ` <span class="muted">(${hw.subject})</span>` : ''}
+          <div class="muted">${dueText}${hw.notes ? ' &middot; ' + hw.notes : ''}</div>
+        </div>
+      </label>
+      <button class="delete-btn" aria-label="Delete ${hw.title}">&times;</button>
+    `;
+    row.querySelector('input[type="checkbox"]').addEventListener('change', () => toggleHomeworkDone(hw.id));
+    row.querySelector('.delete-btn').addEventListener('click', () => deleteHomework(hw.id));
+    list.appendChild(row);
+  });
+}
+
+function renderTodayHomework() {
+  const el = document.getElementById('today-homework');
+  const dueSoon = state.homework
+    .filter(hw => !hw.done && daysUntil(hw.due) <= 3)
+    .sort((a, b) => a.due.localeCompare(b.due));
+  if (dueSoon.length === 0) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  el.style.display = 'block';
+  el.innerHTML = dueSoon.map(hw => {
+    const days = daysUntil(hw.due);
+    const text = days < 0 ? 'Overdue' : days === 0 ? 'Due today' : `Due in ${days}d`;
+    return `<span class="hw-chip">${text}: ${hw.title}</span>`;
+  }).join('');
+}
+
+// ---------- Week view ----------
+function renderWeek() {
+  const label = document.getElementById('week-label');
+  const start = state.weekAnchor;
+  const end = new Date(start);
+  end.setDate(end.getDate() + 6);
+  label.textContent = `${start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${end.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`;
+
+  const grid = document.getElementById('week-grid');
+  grid.innerHTML = '';
+  const today = new Date();
+
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(start);
+    d.setDate(d.getDate() + i);
+    const events = getDayEvents(d);
+    const classes = getClassesForDate(d);
+    const hwCount = state.homework.filter(hw => !hw.done && hw.due === dateKey(d)).length;
+
+    const col = document.createElement('div');
+    col.className = 'week-day' + (isSameDay(d, today) ? ' is-today' : '');
+    col.innerHTML = `
+      <div class="week-day-header">
+        <span>${WEEKDAYS_LONG[d.getDay()]}</span>
+        <span class="muted">${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+        ${hwCount > 0 ? `<span class="hw-dot" title="${hwCount} assignment(s) due">${hwCount}</span>` : ''}
+      </div>
+      <div class="week-day-events"></div>
+    `;
+    const eventsEl = col.querySelector('.week-day-events');
+    events.forEach(ev => {
+      const row = document.createElement('div');
+      row.className = `week-event ${ev.type}`;
+      if (ev.type === 'prayer') {
+        const conflict = classes.find(c => ev.minutes >= c.startMin && ev.minutes < c.endMin);
+        row.innerHTML = `<span class="time">${ev.clock}</span><span>${ev.label}${conflict ? ' ⚠' : ''}</span>`;
+      } else {
+        row.innerHTML = `<span class="time">${ev.clockStart}</span><span>${ev.label}</span>`;
+      }
+      eventsEl.appendChild(row);
+    });
+    grid.appendChild(col);
+  }
+}
+
 // ---------- Month table (Prayer Times tab) ----------
 const monthSelect = document.getElementById('month-select');
 const yearInput = document.getElementById('year-input');
@@ -229,6 +435,7 @@ function renderMonthTable() {
       <td>${times.fajr}</td>
       <td>${times.zhuhr}</td>
       <td>${times.asr}</td>
+      <td>${times.maghrib}</td>
       <td>${times.isha}</td>
     `;
     tbody.appendChild(tr);
@@ -246,4 +453,31 @@ themeToggle.addEventListener('click', () => {
 const savedTheme = localStorage.getItem('shalimar-school-planner:theme');
 if (savedTheme) document.documentElement.setAttribute('data-theme', savedTheme);
 
+// ---------- PWA install ----------
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('service-worker.js').catch(() => {});
+  });
+}
+
+let deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  const btn = document.getElementById('install-btn');
+  if (btn) btn.style.display = 'inline-block';
+});
+
+const installBtn = document.getElementById('install-btn');
+if (installBtn) {
+  installBtn.addEventListener('click', async () => {
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    installBtn.style.display = 'none';
+  });
+}
+
 render();
+countdownTimer = setInterval(updateCountdown, 1000);
