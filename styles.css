@@ -61,6 +61,22 @@ body {
   font-size: 0.85rem;
 }
 
+#alarm-toggle-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.9rem;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+#alarm-toggle-btn.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 #theme-toggle {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -245,6 +261,7 @@ button[type="submit"] {
 table { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: var(--radius); overflow: hidden; }
 th, td { padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
 th { color: var(--muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; position: sticky; top: 0; background: var(--surface); }
+tr.changed-row { background: var(--gold-soft); }
 tr.today-row { background: var(--accent-soft); font-weight: 600; }
 tr.past-row { color: var(--muted); opacity: 0.5; }
 
@@ -381,3 +398,47 @@ tr.past-row { color: var(--muted); opacity: 0.5; }
 }
 
 .hw-timeline-check { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; flex-wrap: wrap; }
+
+/* Alarm */
+.alarm-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1.5rem;
+}
+.alarm-modal-inner {
+  background: var(--surface);
+  border-radius: calc(var(--radius) * 2);
+  padding: 2.5rem 2rem;
+  text-align: center;
+  max-width: 24rem;
+  width: 100%;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  animation: alarm-pulse 1s ease-in-out infinite;
+}
+.alarm-icon { font-size: 3.5rem; animation: alarm-shake 0.5s ease-in-out infinite; }
+.alarm-modal-inner h2 { margin: 0.75rem 0 0.25rem; font-size: 1.4rem; }
+#alarm-dismiss-btn {
+  margin-top: 1.5rem;
+  background: var(--danger);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  padding: 0.9rem 2rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  cursor: pointer;
+  width: 100%;
+}
+@keyframes alarm-pulse {
+  0%, 100% { box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4); }
+  50% { box-shadow: 0 20px 60px rgba(164, 67, 47, 0.55); }
+}
+@keyframes alarm-shake {
+  0%, 100% { transform: rotate(-8deg); }
+  50% { transform: rotate(8deg); }
+}

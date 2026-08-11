@@ -1,6 +1,9 @@
 const STORAGE_KEY = 'shalimar-school-planner:schedule';
 const HOMEWORK_KEY = 'shalimar-school-planner:homework';
 const FOLDER_KEY = 'shalimar-school-planner:folders';
+const ALARM_ENABLED_KEY = 'shalimar-school-planner:alarmsEnabled';
+const ALARM_FIRED_KEY = 'shalimar-school-planner:alarmFired';
+const ALARM_LEAD_MINUTES = 15;
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const WEEKDAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const PRAYER_LABELS = { fajr: 'Fajr', zhuhr: 'Zhuhr', asr: 'Asr', maghrib: 'Maghrib', isha: 'Isha' };
@@ -533,11 +536,18 @@ function renderMonthTable() {
   const today = new Date();
   const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   let todayRow = null;
+
+  const dayBefore = new Date(year, monthIndex, 0);
+  let prevTimes = getPrayerTimesForDate(dayBefore);
+
   for (let d = 1; d <= total; d++) {
     const date = new Date(year, monthIndex, d);
     const times = getPrayerTimesForDate(date);
     const isToday = date.getTime() === startOfToday.getTime();
+    const changed = times.fajr !== prevTimes.fajr || times.zhuhr !== prevTimes.zhuhr
+      || times.asr !== prevTimes.asr || times.isha !== prevTimes.isha;
     const tr = document.createElement('tr');
+    if (changed) tr.classList.add('changed-row');
     if (isToday) { tr.classList.add('today-row'); todayRow = tr; }
     else if (date < startOfToday) tr.classList.add('past-row');
     tr.innerHTML = `
@@ -549,6 +559,7 @@ function renderMonthTable() {
       <td>${times.isha}</td>
     `;
     tbody.appendChild(tr);
+    prevTimes = times;
   }
   if (todayRow) todayRow.scrollIntoView({ block: 'center' });
 }
@@ -590,5 +601,95 @@ if (installBtn) {
   });
 }
 
+// ---------- Iqama alarm ----------
+let audioCtx = null;
+let alarmBeepInterval = null;
+let alarmsEnabled = localStorage.getItem(ALARM_ENABLED_KEY) === 'true';
+
+const alarmToggleBtn = document.getElementById('alarm-toggle-btn');
+const alarmModal = document.getElementById('alarm-modal');
+
+function updateAlarmBtnLabel() {
+  alarmToggleBtn.textContent = alarmsEnabled ? '🔔 Alarms On' : '🔕 Enable Alarms';
+  alarmToggleBtn.classList.toggle('active', alarmsEnabled);
+}
+updateAlarmBtnLabel();
+
+function ensureAudioContext() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+function playBeep() {
+  const ctx = ensureAudioContext();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'square';
+  osc.frequency.value = 880;
+  gain.gain.setValueAtTime(0.15, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start();
+  osc.stop(ctx.currentTime + 0.4);
+}
+
+function startAlarmSound() {
+  playBeep();
+  alarmBeepInterval = setInterval(playBeep, 700);
+}
+
+function stopAlarmSound() {
+  if (alarmBeepInterval) { clearInterval(alarmBeepInterval); alarmBeepInterval = null; }
+}
+
+alarmToggleBtn.addEventListener('click', () => {
+  alarmsEnabled = !alarmsEnabled;
+  localStorage.setItem(ALARM_ENABLED_KEY, String(alarmsEnabled));
+  if (alarmsEnabled) {
+    ensureAudioContext();
+    playBeep();
+    if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
+  }
+  updateAlarmBtnLabel();
+});
+
+document.getElementById('alarm-dismiss-btn').addEventListener('click', () => {
+  alarmModal.style.display = 'none';
+  stopAlarmSound();
+});
+
+function showAlarmModal(label, minutesUntil) {
+  document.getElementById('alarm-title').textContent = `${label} Iqama in ~${minutesUntil} min`;
+  document.getElementById('alarm-subtitle').textContent = 'Tap "Stop Alarm" to dismiss.';
+  alarmModal.style.display = 'flex';
+  startAlarmSound();
+  if ('Notification' in window && Notification.permission === 'granted') {
+    new Notification(`${label} Iqama soon`, { body: `${label} is in about ${minutesUntil} minute${minutesUntil === 1 ? '' : 's'}.` });
+  }
+}
+
+function checkAlarms() {
+  if (!alarmsEnabled || alarmModal.style.display === 'flex') return;
+
+  const now = new Date();
+  const todayKey = dateKey(now);
+  const firedState = loadJSON(ALARM_FIRED_KEY, { date: '', fired: [] });
+  if (firedState.date !== todayKey) { firedState.date = todayKey; firedState.fired = []; }
+
+  const prayers = getPrayerTimesForDate(now);
+  const nowMin = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+
+  for (const [key, clock] of Object.entries(prayers)) {
+    const minutesUntil = parseClockToMinutes(clock) - nowMin;
+    if (minutesUntil > 0 && minutesUntil <= ALARM_LEAD_MINUTES && !firedState.fired.includes(key)) {
+      firedState.fired.push(key);
+      localStorage.setItem(ALARM_FIRED_KEY, JSON.stringify(firedState));
+      showAlarmModal(PRAYER_LABELS[key], Math.round(minutesUntil));
+      break;
+    }
+  }
+}
+
 render();
-countdownTimer = setInterval(updateCountdown, 1000);
+countdownTimer = setInterval(() => { updateCountdown(); checkAlarms(); }, 1000);

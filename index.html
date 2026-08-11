@@ -19,6 +19,7 @@
     <p class="muted">Shalimar Islamic Centre — Mississauga, ON</p>
   </div>
   <div class="header-actions">
+    <button id="alarm-toggle-btn">🔕 Enable Alarms</button>
     <button id="install-btn" style="display:none;">Install App</button>
     <button id="theme-toggle" aria-label="Toggle theme">🌓</button>
   </div>
@@ -26,6 +27,15 @@
 
 <div id="dst-banner" class="banner" style="display:none;"></div>
 <div id="countdown-banner" class="banner countdown-banner" style="display:none;"></div>
+
+<div id="alarm-modal" class="alarm-modal" style="display:none;">
+  <div class="alarm-modal-inner">
+    <div class="alarm-icon">⏰</div>
+    <h2 id="alarm-title"></h2>
+    <p id="alarm-subtitle" class="muted"></p>
+    <button id="alarm-dismiss-btn">Stop Alarm</button>
+  </div>
+</div>
 
 <nav class="tabs">
   <button class="tab-btn active" data-tab="today-tab">Today</button>
@@ -124,7 +134,7 @@
         <tbody id="month-table-body"></tbody>
       </table>
     </div>
-    <p class="muted small">Fajr/Zhuhr/Asr/Isha for the 1st, 10th/DST-Sunday and 20th are taken directly from the mosque's published sheet; other dates are linearly interpolated between those anchors. Maghrib is calculated from sunset and isn't on the printed sheet — treat both as close estimates rather than the official Iqama.</p>
+    <p class="muted small">Fajr/Zhuhr/Asr/Isha for the 1st, 10th/DST-Sunday and 20th are taken directly from the mosque's published sheet. Fajr/Asr/Isha hold at that value until the next listed date (matching the board), Zhuhr is interpolated between them, and Maghrib is calculated from sunset (not on the printed sheet). Rows are highlighted when a time changes from the day before. Treat Maghrib and in-between days as close estimates rather than the official Iqama.</p>
   </section>
 
   <section id="info-tab" class="tab-panel">
