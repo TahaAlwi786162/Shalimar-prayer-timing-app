@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Shalimar Prayer &amp; School Planner</title>
+<meta name="description" content="Merge your school timetable with Shalimar Islamic Centre prayer timings.">
 <meta name="theme-color" content="#2f6b4f">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Prayer Planner">
@@ -15,13 +16,16 @@
 <body>
 <header class="app-header">
   <div class="header-title">
-    <h1>🕌 Prayer &amp; School Planner</h1>
-    <p class="muted">Shalimar Islamic Centre — Mississauga, ON</p>
+    <span class="header-logo">🕌</span>
+    <div>
+      <h1>Prayer &amp; School Planner</h1>
+      <p class="muted">Shalimar Islamic Centre — Mississauga, ON</p>
+    </div>
   </div>
   <div class="header-actions">
-    <button id="alarm-toggle-btn">🔕 Enable Alarms</button>
-    <button id="install-btn" style="display:none;">Install App</button>
-    <button id="theme-toggle" aria-label="Toggle theme">🌓</button>
+    <button id="alarm-toggle-btn" class="icon-btn" title="Enable 15-minute Iqama alarm" aria-label="Enable Iqama alarm">🔕</button>
+    <button id="install-btn" class="icon-btn" style="display:none;" title="Install app" aria-label="Install app">📲</button>
+    <button id="theme-toggle" class="icon-btn" title="Toggle theme" aria-label="Toggle theme">🌓</button>
   </div>
 </header>
 
@@ -38,16 +42,51 @@
 </div>
 
 <nav class="tabs">
-  <button class="tab-btn active" data-tab="today-tab">Today</button>
-  <button class="tab-btn" data-tab="week-tab">Week</button>
-  <button class="tab-btn" data-tab="schedule-tab">School Schedule</button>
-  <button class="tab-btn" data-tab="homework-tab">Homework</button>
-  <button class="tab-btn" data-tab="times-tab">Prayer Times</button>
-  <button class="tab-btn" data-tab="info-tab">Jumu'ah &amp; Info</button>
+  <button class="tab-btn active" data-tab="home-tab"><span class="tab-icon">🏠</span>Home</button>
+  <button class="tab-btn" data-tab="today-tab"><span class="tab-icon">📅</span>Today</button>
+  <button class="tab-btn" data-tab="week-tab"><span class="tab-icon">🗓️</span>Week</button>
+  <button class="tab-btn" data-tab="schedule-tab"><span class="tab-icon">🏫</span>Schedule</button>
+  <button class="tab-btn" data-tab="homework-tab"><span class="tab-icon">📝</span>Homework</button>
+  <button class="tab-btn" data-tab="times-tab"><span class="tab-icon">🕌</span>Prayer Times</button>
+  <button class="tab-btn" data-tab="info-tab"><span class="tab-icon">ℹ️</span>Info</button>
 </nav>
 
 <main>
-  <section id="today-tab" class="tab-panel active">
+  <section id="home-tab" class="tab-panel active">
+    <div class="home-hero">
+      <p class="home-greeting" id="home-greeting"></p>
+      <div class="home-next-card" id="home-next-card"></div>
+    </div>
+
+    <div class="home-stats" id="home-stats"></div>
+
+    <div class="home-columns">
+      <div class="home-col">
+        <div class="home-col-header">
+          <h3>Today</h3>
+          <button class="link-btn" data-tab="today-tab">View all →</button>
+        </div>
+        <div id="home-today-preview" class="mini-list"></div>
+      </div>
+      <div class="home-col">
+        <div class="home-col-header">
+          <h3>Homework due soon</h3>
+          <button class="link-btn" data-tab="homework-tab">View all →</button>
+        </div>
+        <div id="home-homework-preview" class="mini-list"></div>
+      </div>
+    </div>
+
+    <div class="home-quick-actions">
+      <button class="quick-action" data-tab="schedule-tab"><span>➕</span>Add class</button>
+      <button class="quick-action" data-tab="homework-tab"><span>📝</span>Add homework</button>
+      <button class="quick-action" data-tab="week-tab"><span>🗓️</span>View week</button>
+      <button class="quick-action" id="home-alarm-btn"><span>🔔</span>Enable alarms</button>
+      <button class="quick-action" id="home-install-btn" style="display:none;"><span>📲</span>Install app</button>
+    </div>
+  </section>
+
+  <section id="today-tab" class="tab-panel">
     <div class="date-nav">
       <button id="prev-day" aria-label="Previous day">&larr;</button>
       <div class="date-heading">

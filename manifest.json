@@ -1,14 +1,22 @@
 {
   "name": "Shalimar Prayer & School Planner",
   "short_name": "Prayer Planner",
-  "description": "Merge your school timetable with Shalimar Islamic Centre prayer timings.",
+  "description": "Merge your school timetable with Shalimar Islamic Centre prayer timings — today's schedule, week view, homework tracker, and a 15-minute Iqama alarm.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
+  "orientation": "portrait-primary",
   "background_color": "#f5f3ee",
   "theme_color": "#2f6b4f",
   "icons": [
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-192-maskable.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Today", "url": "./index.html#today", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] },
+    { "name": "Add Homework", "url": "./index.html#homework", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] },
+    { "name": "Week", "url": "./index.html#week", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] }
   ]
 }

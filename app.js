@@ -3,7 +3,10 @@ const HOMEWORK_KEY = 'shalimar-school-planner:homework';
 const FOLDER_KEY = 'shalimar-school-planner:folders';
 const ALARM_ENABLED_KEY = 'shalimar-school-planner:alarmsEnabled';
 const ALARM_FIRED_KEY = 'shalimar-school-planner:alarmFired';
-const ALARM_LEAD_MINUTES = 15;
+// Alarm fires at each of these minutes-before-Iqama marks, then stops once
+// the prayer time itself (0) has been reached for the day.
+const ALARM_THRESHOLDS = [15, 10, 5, 0];
+const ALARM_STALE_MINUTES = 60;
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const WEEKDAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const PRAYER_LABELS = { fajr: 'Fajr', zhuhr: 'Zhuhr', asr: 'Asr', maghrib: 'Maghrib', isha: 'Isha' };
@@ -44,14 +47,20 @@ function getFolder(folderId) {
 
 // ---------- Tabs ----------
 const mainEl = document.querySelector('main');
+
+function switchTab(tabId) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tabId));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === tabId));
+  mainEl.classList.toggle('wide', tabId === 'week-tab');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
 document.querySelectorAll('.tab-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById(btn.dataset.tab).classList.add('active');
-    mainEl.classList.toggle('wide', btn.dataset.tab === 'week-tab');
-  });
+  btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+});
+
+document.querySelectorAll('[data-tab]:not(.tab-btn)').forEach(btn => {
+  btn.addEventListener('click', () => switchTab(btn.dataset.tab));
 });
 
 // ---------- Date navigation (Today tab) ----------
@@ -254,7 +263,85 @@ function render() {
   renderHomeworkList();
   renderTodayHomework();
   renderWeek();
+  renderHome();
   updateCountdown();
+}
+
+// ---------- Home dashboard ----------
+function greetingForHour(hour) {
+  if (hour < 5) return 'Still up';
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  if (hour < 21) return 'Good evening';
+  return 'Good night';
+}
+
+function renderHome() {
+  const now = new Date();
+  document.getElementById('home-greeting').textContent =
+    `${greetingForHour(now.getHours())} — ${now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}`;
+
+  const events = getDayEvents(now).filter(ev => ev.type !== 'homework');
+  const nowMin = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+  const next = events.find(ev => ev.minutes > nowMin);
+  const card = document.getElementById('home-next-card');
+  if (next) {
+    const minutesUntil = Math.round(next.minutes - nowMin);
+    const h = Math.floor(minutesUntil / 60);
+    const m = minutesUntil % 60;
+    const inText = h > 0 ? `${h}h ${m}m` : `${m}m`;
+    card.innerHTML = `
+      <p class="home-next-label">Up next</p>
+      <p class="home-next-value">${next.label}</p>
+      <p class="home-next-sub">${next.type === 'prayer' ? next.clock : next.clockStart} &middot; in ${inText}</p>
+    `;
+  } else {
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const fajr = getPrayerTimesForDate(tomorrow).fajr;
+    card.innerHTML = `
+      <p class="home-next-label">Up next</p>
+      <p class="home-next-value">Fajr</p>
+      <p class="home-next-sub">Tomorrow &middot; ${fajr}</p>
+    `;
+  }
+
+  const classesToday = getClassesForDate(now);
+  const prayersLeft = events.filter(ev => ev.type === 'prayer' && ev.minutes > nowMin).length;
+  const weekAhead = new Date(now);
+  weekAhead.setDate(weekAhead.getDate() + 7);
+  const dueThisWeek = state.homework.filter(hw => !hw.done && daysUntil(hw.due) >= 0 && daysUntil(hw.due) <= 7).length;
+  const overdueCount = state.homework.filter(hw => !hw.done && daysUntil(hw.due) < 0).length;
+
+  document.getElementById('home-stats').innerHTML = `
+    <div class="stat-card"><div class="stat-value">${classesToday.length}</div><div class="stat-label">Classes today</div></div>
+    <div class="stat-card"><div class="stat-value">${prayersLeft}</div><div class="stat-label">Prayers left today</div></div>
+    <div class="stat-card"><div class="stat-value">${dueThisWeek}</div><div class="stat-label">Due this week</div></div>
+    <div class="stat-card"><div class="stat-value" style="${overdueCount > 0 ? 'color:var(--danger)' : ''}">${overdueCount}</div><div class="stat-label">Overdue</div></div>
+  `;
+
+  const todayPreview = document.getElementById('home-today-preview');
+  const upcomingToday = getDayEvents(now).filter(ev => ev.type !== 'homework' && ev.minutes > nowMin).slice(0, 4);
+  todayPreview.innerHTML = upcomingToday.length === 0
+    ? '<p class="mini-list-empty">Nothing left today.</p>'
+    : upcomingToday.map(ev => `
+        <div class="mini-list-item" style="border-left-color:${ev.type === 'class' ? (getFolder(ev.folderId)?.color || 'var(--gold)') : 'var(--accent)'}">
+          <span class="time">${ev.type === 'prayer' ? ev.clock : ev.clockStart}</span><span>${ev.label}</span>
+        </div>`).join('');
+
+  const hwPreview = document.getElementById('home-homework-preview');
+  const dueSoon = state.homework
+    .filter(hw => !hw.done)
+    .sort((a, b) => a.due.localeCompare(b.due))
+    .slice(0, 4);
+  hwPreview.innerHTML = dueSoon.length === 0
+    ? '<p class="mini-list-empty">No homework tracked.</p>'
+    : dueSoon.map(hw => {
+        const folder = getFolder(hw.folderId);
+        return `<div class="mini-list-item" style="border-left-color:${folder ? folder.color : DEFAULT_HW_COLOR}">
+          <span class="time">${homeworkDueText(hw)}</span><span>${hw.title}</span>
+        </div>`;
+      }).join('');
 }
 
 function renderDstBanner() {
@@ -587,19 +674,22 @@ window.addEventListener('beforeinstallprompt', e => {
   e.preventDefault();
   deferredInstallPrompt = e;
   const btn = document.getElementById('install-btn');
-  if (btn) btn.style.display = 'inline-block';
+  const homeBtn = document.getElementById('home-install-btn');
+  if (btn) btn.style.display = 'inline-flex';
+  if (homeBtn) homeBtn.style.display = 'flex';
 });
 
-const installBtn = document.getElementById('install-btn');
-if (installBtn) {
-  installBtn.addEventListener('click', async () => {
-    if (!deferredInstallPrompt) return;
-    deferredInstallPrompt.prompt();
-    await deferredInstallPrompt.userChoice;
-    deferredInstallPrompt = null;
-    installBtn.style.display = 'none';
-  });
+async function runInstallPrompt() {
+  if (!deferredInstallPrompt) return;
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+  document.getElementById('install-btn').style.display = 'none';
+  document.getElementById('home-install-btn').style.display = 'none';
 }
+
+document.getElementById('install-btn').addEventListener('click', runInstallPrompt);
+document.getElementById('home-install-btn').addEventListener('click', runInstallPrompt);
 
 // ---------- Iqama alarm ----------
 let audioCtx = null;
@@ -607,13 +697,17 @@ let alarmBeepInterval = null;
 let alarmsEnabled = localStorage.getItem(ALARM_ENABLED_KEY) === 'true';
 
 const alarmToggleBtn = document.getElementById('alarm-toggle-btn');
+const homeAlarmBtn = document.getElementById('home-alarm-btn');
 const alarmModal = document.getElementById('alarm-modal');
 
 function updateAlarmBtnLabel() {
-  alarmToggleBtn.textContent = alarmsEnabled ? '🔔 Alarms On' : '🔕 Enable Alarms';
+  alarmToggleBtn.textContent = alarmsEnabled ? '🔔' : '🔕';
+  alarmToggleBtn.title = alarmsEnabled ? 'Iqama alarm on' : 'Enable 15-minute Iqama alarm';
   alarmToggleBtn.classList.toggle('active', alarmsEnabled);
+  homeAlarmBtn.innerHTML = alarmsEnabled ? '<span>🔔</span>Alarms on' : '<span>🔔</span>Enable alarms';
 }
 updateAlarmBtnLabel();
+homeAlarmBtn.addEventListener('click', () => alarmToggleBtn.click());
 
 function ensureAudioContext() {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -660,12 +754,15 @@ document.getElementById('alarm-dismiss-btn').addEventListener('click', () => {
 });
 
 function showAlarmModal(label, minutesUntil) {
-  document.getElementById('alarm-title').textContent = `${label} Iqama in ~${minutesUntil} min`;
+  const isNow = minutesUntil <= 0;
+  document.getElementById('alarm-title').textContent = isNow ? `${label} Iqama is now` : `${label} Iqama in ${minutesUntil} min`;
   document.getElementById('alarm-subtitle').textContent = 'Tap "Stop Alarm" to dismiss.';
   alarmModal.style.display = 'flex';
   startAlarmSound();
   if ('Notification' in window && Notification.permission === 'granted') {
-    new Notification(`${label} Iqama soon`, { body: `${label} is in about ${minutesUntil} minute${minutesUntil === 1 ? '' : 's'}.` });
+    new Notification(isNow ? `${label} Iqama` : `${label} Iqama soon`, {
+      body: isNow ? `${label} Iqama is now.` : `${label} is in about ${minutesUntil} minutes.`,
+    });
   }
 }
 
@@ -679,17 +776,34 @@ function checkAlarms() {
 
   const prayers = getPrayerTimesForDate(now);
   const nowMin = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+  let dirty = false;
 
+  outer:
   for (const [key, clock] of Object.entries(prayers)) {
     const minutesUntil = parseClockToMinutes(clock) - nowMin;
-    if (minutesUntil > 0 && minutesUntil <= ALARM_LEAD_MINUTES && !firedState.fired.includes(key)) {
-      firedState.fired.push(key);
-      localStorage.setItem(ALARM_FIRED_KEY, JSON.stringify(firedState));
-      showAlarmModal(PRAYER_LABELS[key], Math.round(minutesUntil));
-      break;
+    for (const threshold of ALARM_THRESHOLDS) {
+      const fireKey = `${key}:${threshold}`;
+      if (minutesUntil <= threshold && !firedState.fired.includes(fireKey)) {
+        firedState.fired.push(fireKey);
+        dirty = true;
+        // Missed marks from long before the app was opened ring silently —
+        // only the mark closest to "now" should actually alarm.
+        if (minutesUntil >= -ALARM_STALE_MINUTES) {
+          localStorage.setItem(ALARM_FIRED_KEY, JSON.stringify(firedState));
+          showAlarmModal(PRAYER_LABELS[key], Math.round(minutesUntil));
+          break outer;
+        }
+      }
     }
   }
+  if (dirty) localStorage.setItem(ALARM_FIRED_KEY, JSON.stringify(firedState));
 }
 
 render();
 countdownTimer = setInterval(() => { updateCountdown(); checkAlarms(); }, 1000);
+
+// Support PWA shortcut links (manifest "shortcuts") that open directly into a tab.
+const HASH_TAB_MAP = { today: 'today-tab', week: 'week-tab', homework: 'homework-tab', schedule: 'schedule-tab', times: 'times-tab' };
+if (location.hash && HASH_TAB_MAP[location.hash.slice(1)]) {
+  switchTab(HASH_TAB_MAP[location.hash.slice(1)]);
+}
